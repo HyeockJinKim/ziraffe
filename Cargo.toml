@@ -1,0 +1,11 @@
+[package]
+name = "ziraffe"
+version = "0.1.0"
+authors = ["HyeockJinKim <kherootz@gmail.com>"]
+edition = "2018"
+repository = "https://github.com/HyeockJinKim/zoker"
+license = "MIT"
+
+[[bin]]
+name = "ziraffe"
+path = "src/main.rs"
