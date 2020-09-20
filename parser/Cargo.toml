@@ -1,0 +1,19 @@
+[package]
+name = "ziraffe-parser"
+build = "build.rs"
+version = "0.1.0"
+description = "Ziraffe parser for oracle using zero-knowledge in blockchain"
+authors = ["HyeockJinKim <kherootz@gmail.com>"]
+edition = "2018"
+repository = "https://github.com/HyeockJinKim/ziraffe"
+license = "MIT"
+
+[build-dependencies]
+lalrpop = "0.17.2"
+
+[dependencies]
+assert_matches = "1.3.0"
+lalrpop-util = "0.17.2"
+num-bigint = "0.2"
+regex = "1.3.4"
+unic-ucd-ident  = "0.9.0"

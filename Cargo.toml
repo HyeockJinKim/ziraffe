@@ -6,6 +6,12 @@ edition = "2018"
 repository = "https://github.com/HyeockJinKim/zoker"
 license = "MIT"
 
+[workspace]
+members = [".", "parser"]
+
+[dependencies]
+ziraffe-parser = {path = "parser", version = "0.1.0"}
+
 [[bin]]
 name = "ziraffe"
 path = "src/main.rs"

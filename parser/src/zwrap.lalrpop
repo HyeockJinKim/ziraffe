@@ -1,0 +1,443 @@
+use crate::ast;
+use crate::error::LexicalError;
+use crate::lexer;
+use crate::location;
+
+use num_bigint::BigUint;
+
+grammar;
+
+// All `pub`s are used for dev env.
+// Only consume Global Statements
+pub Program: ast::Program = {
+    <g:GlobalStatements> => ast::Program::GlobalStatements(g),
+};
+
+GlobalStatements: Vec<ast::Statement> = {
+    <mut stmts:GlobalStatements> <stmt:ContractStatement> => {
+        stmts.push(stmt);
+        stmts
+    },
+    <stmt:ContractStatement> => vec![stmt]
+};
+
+ContractStatement: ast::Statement = {
+    <location:@L> "contract" <id:Identifier> "{" <location2:@L> <member:ContractMembers?> "}" => ast::Statement {
+        location,
+        node: ast::StatementType::ContractStatement {
+            contract_name: Box::new(id),
+            members: Box::new(ast::Statement {
+                location: location2,
+                node: ast::StatementType::MemberStatement {
+                    statements: member.unwrap_or(vec![]),
+                }
+            })
+        }
+    },
+};
+
+ContractMembers: Vec<ast::Statement> = {
+    <mut stmts:ContractMembers> <stmt:ContractMember> => {
+        stmts.push(stmt);
+        stmts
+    },
+    <stmt:ContractMember> => vec![stmt],
+};
+
+ContractMember: ast::Statement = {
+    <location:@L> <expr:Expression> ";" => ast::Statement {
+        location,
+        node: ast::StatementType::Expression {
+            expression: Box::new(expr),
+        },
+    },
+    <stmt:InitializerStatement> ";" => stmt,
+    FunctionStatement,
+};
+
+FunctionStatement: ast::Statement = {
+    <location:@L> "function" <id:Identifier> <params:Parameters> <returns:("returns" "(" Type ")")?> <expression:CompoundExpression> => ast::Statement {
+        location,
+        node: ast::StatementType::FunctionStatement {
+            function_name: Box::new(id),
+            parameters: Box::new(params),
+            expr: Box::new(expression),
+            returns: returns.map_or(None, |x| Some(x.2)),
+        }
+    },
+};
+
+Statements: Vec<ast::Statement> = {
+    <mut stmts:Statements> <stmt:Statement> ";" => {
+        stmts.push(stmt);
+        stmts
+    },
+    <stmt:Statement> ";" => vec![stmt]
+};
+
+/// Description for Statement
+/// Only consumed by function
+/// Compound Statement
+/// InitializerStatement
+/// { Statements }
+/// Expression
+pub Statement: ast::Statement = {
+    InitializerStatement,
+    <location:@L> <expr:Expression> => ast::Statement {
+        location,
+        node: ast::StatementType::Expression {
+            expression: Box::new(expr),
+        },
+    },
+};
+
+InitializerStatement: ast::Statement = {
+    <location:@L> <var_type:Type> <variable: Identifier> <default:("=" Expression)?> => {
+        ast::Statement {
+            location,
+            node: ast::StatementType::InitializerStatement {
+                variable_type: var_type,
+                variable: Box::new(variable),
+                default: default.map_or(None, | x | Some(Box::new(x.1))),
+            }
+        }
+    }
+};
+
+CompoundExpression: ast::Expression = {
+    <location:@L> "{" <stmt:Statements?> <return_value:Expression?>"}" => ast::Expression {
+        location,
+        node: ast::ExpressionType::CompoundExpression {
+            statements: stmt.map_or(vec![], |x| x),
+            return_value: return_value.map_or(None, |x| Some(Box::new(x))),
+        }
+    },
+};
+
+IfExpression: ast::Expression = {
+    <location:@L> "if" <expr:Expression> <if_expression:CompoundExpression> <else_expression:("else" CompoundExpression)?> => ast::Expression {
+        location,
+        node: ast::ExpressionType::IfExpression {
+            condition: Box::new(expr),
+            if_expr: Box::new(if_expression),
+            else_expr: else_expression.map_or(None, |x| Some(Box::new(x.1))),
+        }
+    },
+};
+
+ForEachExpression: ast::Expression = {
+    <location:@L> "for" <iter:Expression> "in" <vector:RangeExpression> <expr:CompoundExpression> => ast::Expression {
+        location,
+        node: ast::ExpressionType::ForEachExpression {
+            iterator: Box::new(iter),
+            vector: Box::new(vector),
+            for_expr: Box::new(expr),
+        }
+    },
+};
+
+RangeExpression: ast::Expression = {
+    <location:@L> <start:number> ".." <end:number> => ast::Expression {
+        location,
+        node: ast::ExpressionType::Range {
+            start,
+            end,
+        }
+    }
+}
+
+/// Separate Expression grammar for priority
+///
+/// Priority
+/// 1.
+/// If Expression (if { stmts result } else { stmts result }
+/// For Each Expression ( for in { stmts result } )
+/// Function Call Expression ( func ( args ) )
+/// 2.
+/// Arithmetic Expression ( +, -, *, / )
+/// 3.
+/// Comparision Expression ( ==, !=, <, <=, >, >= )
+/// 4.
+/// Logical Expression ( &&, || )
+/// - except
+/// Assign Expression ( = )
+pub Expression: ast::Expression = {
+    IfExpression,
+    ForEachExpression,
+    CompoundExpression,
+    BinaryExpression,
+};
+
+FunctionCallExpression: ast::Expression = {
+    <location:@L> <id:Identifier> <args:Arguments> => ast::Expression {
+        location,
+        node: ast::ExpressionType::FunctionCallExpression {
+            function_name: Box::new(id),
+            arguments: Box::new(args),
+        }
+    },
+};
+
+BinaryExpression: ast::Expression = {
+    LogicalOrExpression,
+    AssignExpression,
+};
+
+AssignExpression: ast::Expression = {
+    <l:Identifier> <location:@L> <op:AssignOperator> <r:Expression> => ast::Expression {
+        location,
+        node: ast::ExpressionType::AssignExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+};
+
+AssignOperator: ast::Operator = {
+    "=" => ast::Operator::Assign,
+};
+
+LogicalOrExpression: ast::Expression = {
+    <l:LogicalOrExpression> <location:@L> "||" <r:LogicalAndExpression> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: ast::Operator::Or,
+            right: Box::new(r),
+        }
+    },
+    LogicalAndExpression,
+};
+
+LogicalAndExpression: ast::Expression = {
+    <l:LogicalAndExpression> <location:@L> "&&" <r:ComparisonExpression1> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: ast::Operator::And,
+            right: Box::new(r),
+        }
+    },
+    ComparisonExpression1,
+};
+
+ComparisonExpression1: ast::Expression = {
+    <l:ComparisonExpression1> <location:@L> <op:ComparisonOperator1> <r:ComparisonExpression2> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+    ComparisonExpression2,
+};
+
+ComparisonOperator1: ast::Operator = {
+    "==" => ast::Operator::Eq,
+    "!=" => ast::Operator::NotEq,
+};
+
+ComparisonExpression2: ast::Expression = {
+    <l:ComparisonExpression2> <location:@L> <op:ComparisonOperator2> <r:ArithmeticExpression1> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+    ArithmeticExpression1,
+};
+
+ComparisonOperator2: ast::Operator = {
+    "<" => ast::Operator::Lt,
+    "<=" => ast::Operator::Le,
+    ">" => ast::Operator::Gt,
+    ">=" => ast::Operator::Ge,
+};
+
+/// Separate Arithmetic Expression grammar for priority
+///
+/// Priority
+/// 1.
+/// * (multiplication), / (division)
+/// 2.
+/// + (addition), - (subtraction)
+ArithmeticExpression1: ast::Expression = {
+    <l:ArithmeticExpression1> <location:@L> <op:ArithmeticOperator1> <r:ArithmeticExpression2> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+    ArithmeticExpression2,
+};
+
+ArithmeticOperator1: ast::Operator = {
+    "+" => ast::Operator::Add,
+    "-" => ast::Operator::Sub,
+};
+
+ArithmeticExpression2: ast::Expression = {
+    <l:ArithmeticExpression2> <location:@L> <op:ArithmeticOperator2> <r:Value> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+    Value,
+};
+
+ArithmeticOperator2: ast::Operator = {
+    "*" => ast::Operator::Mul,
+    "/" => ast::Operator::Div,
+};
+
+ParameterList: Vec<ast::Statement> = {
+    <mut params:ParameterList> "," <init:InitializerStatement> => {
+        params.push(init);
+        params
+    },
+    <init:InitializerStatement> => vec![init],
+};
+
+Parameters: ast::Expression = {
+    <location:@L> "(" <param_list:ParameterList> ")" => ast::Expression {
+        location,
+        node: ast::ExpressionType::Parameters {
+            parameters: param_list,
+        }
+    },
+    <location:@L> "(" ")" => ast::Expression {
+        location,
+        node: ast::ExpressionType::Parameters {
+            parameters: vec![]
+        }
+    },
+};
+
+ArgumentList: Vec<ast::Expression> = {
+    <mut args:ArgumentList> "," <expr:Expression> => {
+        args.push(expr);
+        args
+    },
+    <expr:Expression> => vec![expr],
+};
+
+Arguments: ast::Expression = {
+    <location:@L> "(" <arg_list:ArgumentList> ")" => ast::Expression {
+        location,
+        node: ast::ExpressionType::Arguments {
+            arguments: arg_list
+        }
+    },
+    <location:@L> "(" ")" => ast::Expression {
+        location,
+        node: ast::ExpressionType::Arguments {
+            arguments: vec![]
+        }
+    },
+};
+
+Value: ast::Expression = {
+    FunctionCallExpression,
+    Terminal,
+    "(" <Expression> ")",
+};
+
+Terminal: ast::Expression = {
+    Number,
+    Identifier,
+    Literal,
+};
+
+Literal: ast::Expression = {
+    <location:@L> <str:literal> => ast::Expression {
+        location,
+        node: ast::ExpressionType::Literal { value: str }
+    },
+};
+
+Number: ast::Expression = {
+    <location:@L> <num:number> => ast::Expression {
+        location,
+        node: ast::ExpressionType::Number { value: num }
+    },
+};
+
+Identifier: ast::Expression = {
+    <location:@L> <id:name> => ast::Expression {
+        location,
+        node: ast::ExpressionType::Identifier { value: id }
+    },
+};
+
+Type: ast::Type = {
+    // Static size
+    "uint" => ast::Type::Uint,
+    "int" => ast::Type::Int,
+    "bool" => ast::Type::Bool,
+    "string" => ast::Type::String,
+    "address" => ast::Type::Address,
+};
+
+// Hook external lexer:
+extern {
+    type Location = location::Location;
+    type Error = LexicalError;
+
+    enum lexer::Tok {
+        // Binary Operator
+        "+" => lexer::Tok::Plus,
+        "-" => lexer::Tok::Minus,
+        "*" => lexer::Tok::Mul,
+        "/" => lexer::Tok::Div,
+        // Assign operator
+        "=" => lexer::Tok::Assign,
+        // Logical Operator
+        "&&" => lexer::Tok::And,
+        "||" => lexer::Tok::Or,
+        // Comparison Operator
+        "<" => lexer::Tok::Lt,
+        "<=" => lexer::Tok::Le,
+        ">" => lexer::Tok::Gt,
+        ">=" => lexer::Tok::Ge,
+        "==" => lexer::Tok::Eq,
+        "!=" => lexer::Tok::NotEq,
+
+        // Type
+        // Static size
+        "uint" => lexer::Tok::Uint,
+        "int" => lexer::Tok::Int,
+        "bool" => lexer::Tok::Bool,
+        "string" => lexer::Tok::String,
+        "address" => lexer::Tok::Address,
+
+        // Keyword
+        "function" => lexer::Tok::Function,
+        "contract" => lexer::Tok::Contract,
+        "returns" => lexer::Tok::Returns,
+        "if" => lexer::Tok::If,
+        "else" => lexer::Tok::Else,
+        "for" => lexer::Tok::For,
+        "in" => lexer::Tok::In,
+        // Mark
+        "(" => lexer::Tok::LPar,
+        ")" => lexer::Tok::RPar,
+        "{" => lexer::Tok::LBrace,
+        "}" => lexer::Tok::RBrace,
+        ";" => lexer::Tok::Semi,
+        "," => lexer::Tok::Comma,
+        ".." => lexer::Tok::DotDot,
+        // Identifier
+        name => lexer::Tok::Identifier { name: <String> },
+        literal => lexer::Tok::Literal { literal: <String> },
+        number => lexer::Tok::Num { number: <BigUint> },
+    }
+}
