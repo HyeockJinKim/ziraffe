@@ -1,0 +1,46 @@
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+name: zireffe CI
+
+jobs:
+  run_testcode:
+    name: Run ziraffe tests code
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@master
+      # Cache to speed up workflow
+      - name: Cache cargo dependencies
+        uses: actions/cache@v1
+        with:
+          key: ${{ runner.os }}-rust_tests-${{ hashFiles('Cargo.lock') }}
+          path: target
+          restore-keys: |
+            ${{ runner.os }}-rust_tests-
+      - name: run rust tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --verbose --all
+
+  check_format:
+    name: Check Rust code with rustfmt and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: run rust fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+      - name: run clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all -- -Dwarnings
