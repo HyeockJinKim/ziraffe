@@ -23,8 +23,9 @@ pub fn make_tokenizer<'a>(source: &'a str) -> impl Iterator<Item = LexResult> + 
 
 fn get_keywords() -> HashMap<String, Tok> {
     let mut keywords = HashMap::new();
+    keywords.insert(String::from("URL"), Tok::URL);
+    keywords.insert(String::from("JSON"), Tok::JSON);
     keywords.insert(String::from("uint"), Tok::Uint);
-    keywords.insert(String::from("int"), Tok::Int);
     keywords.insert(String::from("bool"), Tok::Bool);
     keywords.insert(String::from("string"), Tok::String);
     keywords.insert(String::from("address"), Tok::Address);
@@ -198,6 +199,10 @@ where
                 }
                 "||" => {
                     token = Some(Tok::Or);
+                    break;
+                }
+                "**" => {
+                    token = Some(Tok::Pow);
                     break;
                 }
                 _ => return self.check_token(token),

@@ -283,7 +283,7 @@ ArithmeticOperator1: ast::Operator = {
 };
 
 ArithmeticExpression2: ast::Expression = {
-    <l:ArithmeticExpression2> <location:@L> <op:ArithmeticOperator2> <r:Value> => ast::Expression {
+    <l:ArithmeticExpression2> <location:@L> <op:ArithmeticOperator2> <r:PowerExpression> => ast::Expression {
         location,
         node: ast::ExpressionType::BinaryExpression {
             left: Box::new(l),
@@ -291,12 +291,28 @@ ArithmeticExpression2: ast::Expression = {
             right: Box::new(r),
         }
     },
-    Value,
+    PowerExpression,
 };
 
 ArithmeticOperator2: ast::Operator = {
     "*" => ast::Operator::Mul,
     "/" => ast::Operator::Div,
+};
+
+PowerExpression: ast::Expression = {
+    <l:Value> <location:@L> <op:PowerOperator> <r:Value> => ast::Expression {
+        location,
+        node: ast::ExpressionType::BinaryExpression {
+            left: Box::new(l),
+            operator: op,
+            right: Box::new(r),
+        }
+    },
+    Terminal,
+};
+
+PowerOperator: ast::Operator = {
+    "**" => ast::Operator::Pow,
 };
 
 ParameterList: Vec<ast::Statement> = {
@@ -381,7 +397,6 @@ Identifier: ast::Expression = {
 Type: ast::Type = {
     // Static size
     "uint" => ast::Type::Uint,
-    "int" => ast::Type::Int,
     "bool" => ast::Type::Bool,
     "string" => ast::Type::String,
     "address" => ast::Type::Address,
@@ -398,6 +413,7 @@ extern {
         "-" => lexer::Tok::Minus,
         "*" => lexer::Tok::Mul,
         "/" => lexer::Tok::Div,
+        "**" => lexer::Tok::Pow,
         // Assign operator
         "=" => lexer::Tok::Assign,
         // Logical Operator
@@ -414,7 +430,6 @@ extern {
         // Type
         // Static size
         "uint" => lexer::Tok::Uint,
-        "int" => lexer::Tok::Int,
         "bool" => lexer::Tok::Bool,
         "string" => lexer::Tok::String,
         "address" => lexer::Tok::Address,

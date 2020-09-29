@@ -10,6 +10,7 @@ license = "MIT"
 members = [".", "parser"]
 
 [dependencies]
+ziraffe-compiler = {path = "compiler", version = "0.1.0"}
 ziraffe-parser = {path = "parser", version = "0.1.0"}
 
 [[bin]]

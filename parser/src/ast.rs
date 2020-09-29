@@ -107,14 +107,14 @@ impl ExpressionType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Operator {
     // Arithmetic Operator
     Add,
     Sub,
     Mul,
     Div,
-
+    Pow,
     // Assign operator
     Assign,
 
@@ -133,9 +133,11 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq)]
 pub enum Type {
+    // type
+    URL,
+    JSON,
     // Static size
     Uint,
-    Int,
     Bool,
     String,
     Address,

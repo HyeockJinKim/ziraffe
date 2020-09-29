@@ -1,0 +1,13 @@
+[package]
+name = "ziraffe-compiler"
+version = "0.1.0"
+description = "Ziraffe compiler for oracle using zero-knowledge in blockchain"
+authors = ["HyeockJinKim <kherootz@gmail.com>"]
+edition = "2018"
+repository = "https://github.com/HyeockJinKim/ziraffe"
+license = "MIT"
+
+[dependencies]
+indexmap = "1.6.0"
+ziraffe-parser = { path = "../parser", version = "0.1.0" }
+num-bigint = "0.2.3"

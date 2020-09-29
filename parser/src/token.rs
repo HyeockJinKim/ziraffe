@@ -9,6 +9,8 @@ pub enum Tok {
     Minus,
     Mul,
     Div,
+    // Power Operator
+    Pow,
     // Assign operator
     Assign,
     // Logical Operator
@@ -23,9 +25,10 @@ pub enum Tok {
     NotEq,
 
     // Type
+    URL,
+    JSON,
     // Static size
     Uint,
-    Int,
     Bool,
     String,
     Address,
